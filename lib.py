@@ -22,9 +22,9 @@ def cma_es(
     C = np.identity(dim)
 
     # 初期個体集合を生成
-    population = []
+    population: List[List[float]] = []
     for _ in range(population_size):
-        i = [random.uniform(low, high) for low, high in bounds]
+        i = [np.random.multivariate_normal(mean=m, cov=C, size=dim)]
         population.append(i)
     
     # 関数に入力して選抜する
