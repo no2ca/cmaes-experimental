@@ -3,84 +3,68 @@ from lib import CMAES
 def obj_func(x):
         return x * x + 1
 
-def parametric_func(x, y, a=1, b=1):
-        return a * (x - 5)**2 + b * (y - 4)**2
-
 def rosenbrock(x, y):
         return (1 - x)**2 + 100*(y - x**2)**2
 
 def test_obj_func_easy():
-    for _ in range(100):
-        lower = -5
-        higher = 5
         eps = 0.1
         ans = 0
-        bound_1 = [(lower, higher)]
+        test_points = [
+                [2],
+                [-2],     # 負の値から
+                [0],      # 原点から
+        ]
 
-        _loss, value = CMAES.opt(
-                obj_func, 
-                bound_1, 
-                ["x"],
-        )
-
-        assert abs(ans - value[0]) <= eps
-
-def test_parametric_func_easy():
-    for _ in range(100):
-        lower = -5
-        higher = 5
-        eps = 0.1
-        ans = [5, 4]
-        bound_2 = [(lower, higher), (lower, higher)]
-
-        _loss, value = CMAES.opt(
-                parametric_func, 
-                bound_2, 
-                ["x", "y"], 
-        )
-
-        assert abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps
+        for init_point in test_points:
+                cmaes = CMAES(arg_names=["x"], ave_vec=init_point, max_iter=200, sigma=0.8)
+                loss, value = cmaes.opt(obj_func)
+                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
+                assert abs(ans - value[0]) <= eps
 
 def test_rosenbrock_easy():
-    ans = [1, 1]
-    eps = 0.1
-    for i in range(100): 
-        bounds = [(-2, 2), (-2, 2)]
-        loss, value = CMAES.opt(rosenbrock, bounds, ["x", "y"], max_iter=500)
-        print(f"count: {i}")
-        assert abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps
+        eps = 0.1
+        ans = [1, 1]
+        test_points = [
+                [0, 0],
+        ]
+
+        for init_point in test_points:
+                cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=1000, sigma=0.8)
+                loss, value = cmaes.opt(rosenbrock)
+                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
+                assert abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps
 
 
 def test_obj_strict():
-        lower = -5
-        higher = 5
         eps = 1e-4
         ans = 0
-        for _ in range(50):
-                bound_1 = [(lower, higher)]
+        test_points = [
+                [3],
+                [5],      # 遠い
+                [-2],     # 負の値から
+                [0],      # 原点から
+                [10]      # 極端な点
+        ]
 
-                _loss, value = CMAES.opt(
-                        obj_func, 
-                        bound_1, 
-                        ["x"],
-                        max_iter=500,
-                )
-
+        for init_point in test_points:
+                cmaes = CMAES(arg_names=["x"], ave_vec=init_point, max_iter=200, sigma=0.8)
+                loss, value = cmaes.opt(obj_func)
+                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
                 assert abs(ans - value[0]) <= eps
 
-def test_parametric_strict():
-        lower = -5
-        higher = 5
+def test_rosenbrock_strict():
         eps = 1e-4
-        ans = [5, 4]
-        for _ in range(50):
-                bound_2 = [(lower, higher), (lower, higher)]
+        ans = [1, 1]
+        test_points = [
+                [3, -1],
+                [5, 5],      # 両方とも遠い
+                [-2, 3],     # 負の値から
+                [0, 0],      # 原点から
+                [10, -5]     # 極端な点
+        ]
 
-                _loss, value = CMAES.opt(
-                        parametric_func, 
-                        bound_2, 
-                        ["x", "y"], 
-                        max_iter=500,
-                )
-
+        for init_point in test_points:
+                cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=200, sigma=0.8)
+                loss, value = cmaes.opt(rosenbrock)
+                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
                 assert abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps
