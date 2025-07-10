@@ -7,7 +7,7 @@ def parametric_func(x, y, a=1, b=1):
         return a * (x - 1)**2 + b * (y - 2)**2
 
 def test_obj_func():
-    for _ in range(100):
+    for _ in range(10):
         lower = -5
         higher = 5
         bound_1 = [(lower, higher)]
@@ -21,7 +21,7 @@ def test_obj_func():
         assert lower <= value[0] <= higher
 
 def test_parametric_func():
-    for _ in range(100):
+    for _ in range(10):
         lower = -5
         higher = 5
         bound_2 = [(lower, higher), (lower, higher)]

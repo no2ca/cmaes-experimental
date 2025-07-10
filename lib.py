@@ -19,7 +19,8 @@ class CMAES():
         loss = float('inf')
         best_val = None
         step_size = mut_rate
-        sigma = 1
+        sigma = 1.0
+        c_mu = 0.5
         
         # 平均値ベクトルと共分散行列を初期化
         m = np.zeros(dim)
@@ -34,7 +35,7 @@ class CMAES():
                 i = sampled_array.tolist()
                 population.append(i[0])
             
-            # 比較して選抜する
+            # 関数に通して並べ替える
             scores: List[Tuple[float, List[float]]] = []
             for x in population:
                 arg_dict = {name: val for name, val in zip(arg_names, x)}
@@ -42,24 +43,41 @@ class CMAES():
                 scores.append((current_loss, x))
             
             scores.sort(key=lambda x: x[0])
+
+            # 暫定出力値の更新
+            if loss > scores[0][0]:
+                loss = scores[0][0]
+                best_val = scores[0][1]
+
             # elite_sizeの個体を取り出す
-            # コピーは不要か？
             elites = scores[:5]
-            # print(f"elites: {elites}")
-            # 平均値ベクトルの更新
+
+            # 平均値ベクトルの更新処理
             next_m = np.zeros(dim)
             weight = float(elite_size)
             for x in elites:
                 x = np.array(x[1]) # dim次元のリストである値を取り出す
                 next_m = next_m + x * weight / float((elite_size) * (elite_size + 1) / 2)
                 weight -= 1
+
+            # 共分散行列のランクmu更新
+            C_tmp = np.zeros((dim, dim))
+            for x in elites:
+                mu = float(elite_size)
+                x = np.array(x[1])
+                # 列ベクトルに変換
+                x_col = x.reshape(-1, 1)
+                m_col = m.reshape(-1, 1)
+                C_tmp = C_tmp + ((x_col - m_col) @ (x_col - m_col).T / mu)
             
+            # print(f"[DEBUG] C_tmp: \n{C_tmp}")
+            C_tmp /= sigma ** 2
+            C = (1 - c_mu) * C + c_mu * C_tmp
+
+            # 平均値ベクトルの更新
             m = next_m
-            print(f"m: {m}")
 
-        loss = scores[0][0]
-        best_val = scores[0][1]
-
+        # print(f"[DEBUG] m: {m}")
         return (loss, best_val)
 
 if __name__ == "__main__":
@@ -68,11 +86,21 @@ if __name__ == "__main__":
     
     lower = -5
     higher = 5
-    bound_2 = [(lower, higher), (lower, higher)]
+    bound_1 = [(lower, higher), (lower, higher)]
 
-    _loss, value = CMAES.opt(
+    loss, value = CMAES.opt(
             parametric_func, 
-            bound_2, 
+            bound_1, 
             ["x", "y"], 
             max_iter = 10,
     )
+
+    print(f"最適化結果: \n解={loss}, 値={value}")
+
+    def rosenbrock(x, y, z):
+        return (1 - x)**2 + 100*(y - x**2)**2 + (z - 1)**2
+    
+    bounds = [(-2, 2), (-2, 2), (-2, 2)]
+    loss, value = CMAES.opt(rosenbrock, bounds, ["x", "y", "z"], max_iter=20)
+
+    print(f"Rosenbrock関数の最適化結果: \n解={loss}, 値={value}")
