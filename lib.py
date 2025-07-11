@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Callable, List, Tuple
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 
 class CMAES():
     def __init__(self, arg_names: List[str], ave_vec: List[float], sigma=1.0, max_iter=100, population=None, mu=None):
@@ -72,7 +73,7 @@ class CMAES():
         print(f"weights: {self.weights}")
         print(f"")
     
-    def record_history(self, fitness_values):
+    def record_history(self, fitness_values, population):
         self.history['best_fitness'].append(np.min(fitness_values))
         self.history['mean_fitness'].append(np.mean(fitness_values))
         self.history['worst_fitness'].append(np.max(fitness_values))
@@ -80,6 +81,7 @@ class CMAES():
         self.history['sigma'].append(self.sigma)
         eigenvals, _ = np.linalg.eigh(self.C)
         self.history['eigenvalues'].append(eigenvals.copy())
+        self.history['populations'].append(population.copy())
 
     def opt(self, f: Callable) -> Tuple[float, List[float]]:
         dim = self.dim
@@ -111,7 +113,7 @@ class CMAES():
             fitness_values = np.array([i[0] for i in scores])
             population = np.array([i[1] for i in scores])
             # print(f"min(fitness_values): {np.min(fitness_values)}")
-            self.record_history(fitness_values)
+            self.record_history(fitness_values, population)
 
             # self.muの個体を取り出す
             elites = scores[:self.mu]
@@ -208,6 +210,59 @@ class CMAES():
         axes[1, 1].grid(True)
         
         plt.tight_layout()
+        plt.show()
+
+    def plot_2d_optimization(self, objective_func, xlim=(-3, 3), ylim=(-3, 3), figsize=(10, 8)):
+        """2次元最適化の可視化"""
+        if self.dim != 2:
+            print("2次元問題のみ対応")
+            return
+        
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # 等高線プロット
+        x = np.linspace(xlim[0], xlim[1], 100)
+        y = np.linspace(ylim[0], ylim[1], 100)
+        X, Y = np.meshgrid(x, y)
+        Z = np.zeros_like(X)
+        
+        for i in range(X.shape[0]):
+            for j in range(X.shape[1]):
+                Z[i, j] = objective_func(X[i, j], Y[i, j])
+        
+        contour = ax.contour(X, Y, Z, levels=20, alpha=0.6)
+        ax.clabel(contour, inline=True, fontsize=8)
+        
+        # 最適化軌跡
+        mean_vectors = np.array(self.history['mean_vector'])
+        ax.plot(mean_vectors[:, 0], mean_vectors[:, 1], 'r-o', markersize=4, linewidth=2, label='Mean trajectory')
+        
+        # 最終世代の個体群と分散楕円
+        if self.history['populations']:
+            final_pop = self.history['populations'][-1]
+            ax.scatter(final_pop[:, 0], final_pop[:, 1], alpha=0.6, s=20, label='Final population')
+            
+            # 分散楕円
+            mean = mean_vectors[-1]
+            cov = self.C * (self.sigma ** 2)
+            eigenvals, eigenvecs = np.linalg.eigh(cov)
+            
+            # 95%信頼楕円
+            angle = np.degrees(np.arctan2(*eigenvecs[:, 0][::-1]))
+            width, height = 2 * np.sqrt(eigenvals) * 2.448  # 95%信頼区間
+            
+            ellipse = Ellipse(mean, width, height, angle=angle, 
+                            facecolor='none', edgecolor='red', linewidth=2, alpha=0.8)
+            ax.add_patch(ellipse)
+        
+        ax.set_xlabel(self.arg_names[0])
+        ax.set_ylabel(self.arg_names[1])
+        ax.set_title('2D Optimization Visualization')
+        ax.legend()
+        ax.grid(True)
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        
         plt.show()
 
 if __name__ == "__main__":
