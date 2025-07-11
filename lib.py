@@ -1,30 +1,44 @@
 import numpy as np
 from typing import Callable, List, Tuple
+import matplotlib.pyplot as plt
 
 class CMAES():
-    def __init__(self, arg_names: List[str], ave_vec, sigma=1.0, max_iter=100):
+    def __init__(self, arg_names: List[str], ave_vec: List[float], sigma=1.0, max_iter=100, population=None, mu=None):
         self.arg_names = arg_names
-        self.dim = len(arg_names)
-        self.population = int(4 + 3 * np.log(self.dim))
-        self.mu = int(np.floor(self.population / 2))
+        self.dim = len(ave_vec)
         self.max_iter = max_iter
+        # 個体数と選抜数
+        self.population = population if population else int(4 + 3 * np.log(self.dim))
+        self.mu = mu if mu else int(np.floor(self.population / 2))
+        # 平均値ベクトル
         self.m = np.array(ave_vec, dtype=np.float64)
+        # 重み行列の計算(muを定義した後)
         self.weights = self.calc_weights()
         self.mu_eff = 1.0 / (self.weights**2).sum()
-        self.loss = float('inf')
-        self.best_val = None
         self.sigma = float(sigma)
+        self.C = np.identity(self.dim)
         self.c_1 = 2.0 / ((self.dim + 1.3) ** 2 + self.mu_eff)
         self.c_mu = min(
         1 - self.c_1,
         2.0 * (self.mu_eff - 2 + 1/self.mu_eff) / ((self.dim + 2) ** 2 + self.mu_eff)
         )
         self.chi = np.sqrt(self.dim) * (1 - 1 / (4 * self.dim) + 1 / (21 * (self.dim ** 2)))
-        self.C = np.identity(self.dim)
         self.c_c = (4 + self.mu_eff / self.dim) / (self.dim + 4 + 2 * self.mu_eff / self.dim)
         self.c_sigma = (self.mu_eff + 2) / (self.dim + self.mu_eff + 5)
         self.p_c = np.zeros(self.dim)
         self.p_sigma = np.zeros(self.dim)
+        self.loss = float('inf')
+        self.best_val = None
+
+        self.history = {
+            'best_fitness': [],
+            'mean_fitness': [],
+            'worst_fitness': [],
+            'mean_vector': [],
+            'sigma': [],
+            'eigenvalues': [],
+            'populations': []  # 各世代の全個体
+        }
 
     def sample(self) -> List[float]:
         """多次元正規分布からサンプリングをする"""
@@ -51,12 +65,28 @@ class CMAES():
         C_inv_sqrt = eigvecs @ D_inv_sqrt @ eigvecs.T
         return C_inv_sqrt
 
+    def compute_d_sigma(self):
+        return 1 + self.c_sigma + 2 * max(0, np.sqrt((self.mu_eff - 1) / (self.dim + 1)) - 1)
+    
+    def debug(self):
+        print(f"weights: {self.weights}")
+        print(f"")
+    
+    def record_history(self, fitness_values):
+        self.history['best_fitness'].append(np.min(fitness_values))
+        self.history['mean_fitness'].append(np.mean(fitness_values))
+        self.history['worst_fitness'].append(np.max(fitness_values))
+        self.history['mean_vector'].append(self.m.copy())
+        self.history['sigma'].append(self.sigma)
+        eigenvals, _ = np.linalg.eigh(self.C)
+        self.history['eigenvalues'].append(eigenvals.copy())
+
     def opt(self, f: Callable) -> Tuple[float, List[float]]:
         dim = self.dim
         mu_eff = self.mu_eff
         
         # 選抜を行うループ
-        for _ in range(self.max_iter):
+        for gen in range(self.max_iter):
             # 個体集合を生成
             group: List[List[float]] = []
             for _ in range(self.population):
@@ -74,47 +104,57 @@ class CMAES():
 
             # 暫定出力値の更新
             if self.loss > scores[0][0]:
+                # print(f"DEBUG loss: {scores[0][0]}")
                 self.loss = scores[0][0]
                 self.best_val = scores[0][1]
+            
+            fitness_values = np.array([i[0] for i in scores])
+            population = np.array([i[1] for i in scores])
+            # print(f"min(fitness_values): {np.min(fitness_values)}")
+            self.record_history(fitness_values)
 
             # self.muの個体を取り出す
             elites = scores[:self.mu]
             elites = np.array([i[1] for i in elites])
 
             # 平均値ベクトルの更新
-            m_prev = self.m
+            m_old = self.m
             self.m = self.weights @ elites
-
-            # ステップサイズσの更新処理
-            y = (self.m - m_prev) / self.sigma
-            p_sigma = (1 - self.c_sigma) * self.p_sigma
-            p_sigma += np.sqrt(1 - (1 - self.c_sigma) ** 2) * mu_eff * (self.matrix_inverse_sqrt() @ y)
-            self.p_sigma = p_sigma
-
-            p_sigma_norm = np.linalg.norm(p_sigma)
-            sigma_next = self.sigma * np.exp(
-                (self.c_sigma / self.compute_d_sigma())
-                * (p_sigma_norm / self.chi - 1)
-            )
-            self.sigma = sigma_next
+            # print(f"m: {self.m}")
 
             # 共分散行列のランクmu更新
             C_mu = np.zeros((dim, dim))
             for i in range(self.mu):
-                x = np.array(x)
-                # 列ベクトルに変換
-                x_col = x.reshape(-1, 1)
-                m_col = m_prev.reshape(-1, 1)
-                C_mu = C_mu + self.weights[i] * ((x_col - m_col) @ (x_col - m_col).T / self.mu)
+                x = np.array(elites[i])
+                y_i = x - m_old
+                C_mu = C_mu + self.weights[i] * (np.outer(y_i, y_i) / self.mu)
 
             # print(f"[DEBUG] C_mu: \n{C_mu}")
             C_mu /= self.sigma ** 2
 
+            # ステップサイズσの更新処理
+            y = (self.m - m_old) / self.sigma
+            p_sigma = (1 - self.c_sigma) * self.p_sigma
+            p_sigma += np.sqrt(1 - (1 - self.c_sigma) ** 2) * mu_eff * (self.matrix_inverse_sqrt() @ y)
+
+            p_sigma_norm = np.linalg.norm(p_sigma)
+            self.sigma = self.sigma * np.exp(
+                (self.c_sigma / self.compute_d_sigma())
+                * (p_sigma_norm / self.chi - 1)
+            )
+            self.p_sigma = p_sigma
+
+            """
+            # ステップサイズが多すぎるときにCの更新を止める
+            left = np.sqrt((self.p_sigma ** 2).sum()) / np.sqrt(1 - (1 - self.c_sigma) ** (2 * (gen+1)))
+            right = (1.4 + 2 / (self.dim + 1)) * self.chi
+            hsigma = 1 if left < right else 0
+            d_hsigma = (1 - hsigma) * self.c_c * (2 - self.c_c)
+            """
+
             # 共分散行列のランク1更新
-            p_c_next = (1 - self.c_c) * self.p_c + np.sqrt(1 - (1 - self.c_c) ** 2) * np.sqrt(mu_eff) * y
-            self.p_c = p_c_next
-            p_next_col = p_c_next.reshape(-1, 1)
-            C_1 = p_next_col @ p_next_col.T
+            self.p_c = (1 - self.c_c) * self.p_c + np.sqrt(1 - (1 - self.c_c) ** 2) * np.sqrt(mu_eff) * y
+            C_1 = np.outer(self.p_c, self.p_c)
 
             # 共分散行列の更新
             C_new = (1 - self.c_mu - self.c_1) * self.C + self.c_mu * C_mu + self.c_1 * C_1
@@ -122,9 +162,53 @@ class CMAES():
 
         # print(f"[DEBUG] m: {m}")
         return (self.loss, self.best_val)
+    
+    def plot_convergence(self, figsize=(12, 8), ans=None):
+        """収束履歴をプロット"""
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        
+        # 適応度の履歴
+        generations = range(len(self.history['best_fitness']))
+        axes[0, 0].semilogy(generations, self.history['best_fitness'], 'b-', label='Best')
+        axes[0, 0].semilogy(generations, self.history['mean_fitness'], 'g-', label='Mean')
+        axes[0, 0].semilogy(generations, self.history['worst_fitness'], 'r-', label='Worst')
+        axes[0, 0].set_xlabel('Generation')
+        axes[0, 0].set_ylabel('Fitness')
+        axes[0, 0].set_title('Fitness Evolution')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True)
+        
+        # ステップサイズの履歴
+        axes[0, 1].semilogy(generations, self.history['sigma'], 'purple')
+        axes[0, 1].set_xlabel('Generation')
+        axes[0, 1].set_ylabel('Step Size (σ)')
+        axes[0, 1].set_title('Step Size Evolution')
+        axes[0, 1].grid(True)
 
-    def compute_d_sigma(self):
-        return 1 + self.c_sigma + 2 * max(0, np.sqrt((self.mu_eff - 1) / (self.dim + 1)) - 1)
+        if self.dim == 2:
+            mean_vectors = np.array(self.history['mean_vector'])
+            axes[1, 0].plot(mean_vectors[:, 0], mean_vectors[:, 1], 'o-', markersize=3)
+            axes[1, 0].plot(mean_vectors[0, 0], mean_vectors[0, 1], 'go', markersize=8, label='Start')
+            axes[1, 0].plot(mean_vectors[-1, 0], mean_vectors[-1, 1], 'ro', markersize=8, label='End')
+            axes[1, 0].set_xlabel(self.arg_names[0])
+            axes[1, 0].set_ylabel(self.arg_names[1])
+            axes[1, 0].set_title('Mean Vector Trajectory')
+            axes[1, 0].legend()
+            axes[1, 0].grid(True)
+            if ans:
+                axes[1, 0].plot(ans[0], ans[1], 'r*', markersize=8, label='Answer')
+
+        eigenvalues = np.array(self.history['eigenvalues'])
+        for i in range(self.dim):
+            axes[1, 1].semilogy(generations, eigenvalues[:, i], label=f'λ{i+1}')
+        axes[1, 1].set_xlabel('Generation')
+        axes[1, 1].set_ylabel('Eigenvalues')
+        axes[1, 1].set_title('Covariance Matrix Eigenvalues')
+        axes[1, 1].legend()
+        axes[1, 1].grid(True)
+        
+        plt.tight_layout()
+        plt.show()
 
 if __name__ == "__main__":
     def parametric_func(x, y):
@@ -133,16 +217,29 @@ if __name__ == "__main__":
     def rosenbrock(x, y):
         return (1 - x)**2 + 100*(y - x**2)**2
 
-    # より困難な初期点での検証
-    test_points = [
+    def rastrigin_func(x, y):
+        args = [x, y]
+        k = 0
+        for n in args:
+            k += 10 + (n*n - 10 * np.cos(2*np.pi*n))
+        return k
+
+    test_points_dim_1 = [
+        [2],
+        [1],
+        [-2],
+        [-1],
+    ]
+        
+    test_points_dim_2 = [
+        [1, 1],
         [3, -1],
-        [5, 5],      # 両方とも遠い
-        [-2, 3],     # 負の値から
-        [0, 0],      # 原点から
-        [10, -5]     # 極端な点
+        [5, 5], 
+        [-2, 3],
+        [5, -5],
     ]
 
-    for init_point in test_points:
-        cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=200, sigma=0.8)
-        loss, value = cmaes.opt(rosenbrock)
+    for init_point in test_points_dim_2:
+        cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=100, sigma=0.3)
+        loss, value = cmaes.opt(rastrigin_func)
         print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
