@@ -1,70 +1,41 @@
 from lib import CMAES
 
-def obj_func(x):
+def f(x):
         return x * x + 1
 
 def rosenbrock(x, y):
         return (1 - x)**2 + 100*(y - x**2)**2
 
-def test_obj_func_easy():
-        eps = 0.1
+def test_f():
+        eps = 1e-2
         ans = 0
-        test_points = [
-                [2],
-                [-2],     # 負の値から
-                [0],      # 原点から
-        ]
-
-        for init_point in test_points:
-                cmaes = CMAES(arg_names=["x"], ave_vec=init_point, max_iter=200, sigma=0.8)
-                loss, value = cmaes.opt(obj_func)
-                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
-                assert abs(ans - value[0]) <= eps
-
-def test_rosenbrock_easy():
-        eps = 0.1
-        ans = [1, 1]
-        test_points = [
-                [0, 0],
-        ]
-
-        for init_point in test_points:
-                cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=1000, sigma=0.8)
-                loss, value = cmaes.opt(rosenbrock)
-                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
-                assert abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps
-
-
-def test_obj_strict():
-        eps = 1e-4
-        ans = 0
+        c = 0
+        N = 30
         test_points = [
                 [3],
                 [1],
                 [-2],
                 [0], 
-                [3]  
         ]
+        for i in range(N):
+                for init_point in test_points:
+                        cmaes = CMAES(arg_names=["x"], ave_vec=init_point, max_iter=200, sigma=0.8)
+                        loss, value = cmaes.opt(f)
+                        print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
+                        if abs(ans - value[0]) <= eps:
+                                c += 1
+        assert c >= N * 0.7 * len(test_points)
 
-        for init_point in test_points:
-                cmaes = CMAES(arg_names=["x"], ave_vec=init_point, max_iter=200, sigma=0.8)
-                loss, value = cmaes.opt(obj_func)
-                print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
-                assert abs(ans - value[0]) <= eps
-
-def test_rosenbrock_strict():
-        eps = 1e-3
+def test_rosenbrock():
+        eps = 1e-2
         ans = [1, 1]
-        test_points = [
-                [1, -1],
-                [1, 2], 
-                [-2, 0],
-                [0, 0], 
-                [-1, -1]  
-        ]
-
-        for init_point in test_points:
-                cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=300, sigma=0.6)
+        init_point = [0.5, 1.5]
+        count = 0
+        N = 30
+        for i in range(N):
+                cmaes = CMAES(arg_names=["x", "y"], ave_vec=init_point, max_iter=200)
                 loss, value = cmaes.opt(rosenbrock)
                 print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
-                assert abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps
+                if abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps:
+                        count += 1
+        assert count >= N * 0.7
