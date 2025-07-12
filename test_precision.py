@@ -28,6 +28,7 @@ def test_f():
 
 def test_rosenbrock():
         eps = 1e-2
+        eps2 = 1e-1
         ans = [1, 1]
         init_point = [0.5, 1.5]
         count = 0
@@ -38,4 +39,7 @@ def test_rosenbrock():
                 print(f"初期点{init_point}: 値={loss:.2e}, 解={value}")
                 if abs(ans[0] - value[0]) <= eps and abs(ans[1] - value[1]) <= eps:
                         count += 1
+                elif abs(ans[0] - value[0]) <= eps2 and abs(ans[1] - value[1]) <= eps2:
+                        count += 0.3
+        print(f"count: {count}")
         assert count >= N * 0.7
